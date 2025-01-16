@@ -1,0 +1,50 @@
+<head>
+    <script>
+      async function getData() {
+          try {
+              const response = await fetch('/api/data', {
+                  method: 'GET',
+                  credentials: 'include'  // Ensures cookies are sent with the request
+              });
+  
+              if (response.ok) {
+                  const data = await response.json();
+                  console.log('API Response:', data);
+                  document.getElementById('api-data').innerText = data.message;
+              } else {
+                  console.error('Error:', response.status);
+              }
+          } catch (error) {
+              console.error('Request failed:', error);
+          }
+      }
+  
+      // Call the function after the page loads
+      window.onload = getData;
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body class="container">
+    
+{% block content %}
+<div class="sidebar">
+    <ul>
+        <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+        {% if current_user.is_member %}
+            <li><a href="{{ url_for('members') }}">Members Page</a></li>
+        {% endif %}
+        {% if current_user.is_trusted_editor %}
+            <li><a href="{{ url_for('trusted_editors') }}">Trusted Editors Page</a></li>
+        {% endif %}
+        {% if current_user.is_admin %}
+            <li><a href="{{ url_for('manage_users') }}">Manage Users</a></li>
+        {% endif %}
+    </ul>
+</div>
+
+<div class="main-content">
+    <h1>Welcome, {{ current_user.username }}!</h1>
+    <p>Your role: {% if current_user.is_admin %}Admin{% elif current_user.is_member %}Member{% elif current_user.is_trusted_editor %}Trusted Editor{% else %}User{% endif %}</p>
+{% endblock %}
+  </body>
+  

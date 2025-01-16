@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Users</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="container">
+    <h1>User Management</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.username }}</td>
+                <td>
+                    {% if user.is_owner %}
+                        Owner
+                    {% elif user.is_admin %}
+                        Admin
+                    {% elif user.is_trusted_editor %}
+                        Trusted Editor
+                    {% elif user.is_member %}
+                        Member
+                    {% else %}
+                        Regular User
+                    {% endif %}
+                </td>
+                <td>
+                    {% set can_promote = (current_user.is_owner and not user.is_owner and not user.is_admin) or 
+                                        (current_user.is_admin and not user.is_owner and not user.is_admin) %}
+                    {% set can_demote = (current_user.is_owner and (user.is_admin or user.is_trusted_editor or user.is_member) and current_user.username != user.username) or 
+                                        (current_user.is_admin and not user.is_owner and not user.is_admin and current_user.username != user.username) %}
+
+                    <div class="actions">
+                        <!-- Promote Button (Always says "Promote") -->
+                        {% if can_promote %}
+                            <form method="POST" action="{{ url_for('promote_user', user_id=user.id) }}">
+                                <button type="submit">Promote</button>
+                            </form>
+                        {% endif %}
+
+                        <!-- Demote Button -->
+                        {% if can_demote %}
+                            <form method="POST" action="{{ url_for('demote_user', user_id=user.id) }}">
+                                <button type="submit" style="background-color: red; color: white;">Demote</button>
+                            </form>
+                        {% endif %}
+
+                        <!-- Show "None" when no actions are available -->
+                        {% if not can_promote and not can_demote %}
+                            None
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+</body>
+</html>
