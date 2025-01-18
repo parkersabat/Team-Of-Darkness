@@ -36,9 +36,14 @@
                 </td>
                 <td>
                     {% set can_promote = (current_user.is_owner and not user.is_owner and not user.is_admin) or 
-                                        (current_user.is_admin and not user.is_owner and not user.is_admin) %}
-                    {% set can_demote = (current_user.is_owner and (user.is_admin or user.is_trusted_editor or user.is_member) and current_user.username != user.username) or 
-                                        (current_user.is_admin and not user.is_owner and not user.is_admin and current_user.username != user.username) %}
+                        (current_user.is_admin and not user.is_owner and not user.is_admin and not user.is_trusted_editor) %}    
+                    {% set can_demote = (user.is_admin or user.is_trusted_editor or user.is_member) and (
+                        (current_user.is_owner and user.username != current_user.username) or
+                        (current_user.is_admin and not user.is_owner and not user.is_admin and user.username != current_user.username)
+                    ) %}
+    
+    
+                    
 
                     <div class="actions">
                         <!-- Promote Button (Always says "Promote") -->
