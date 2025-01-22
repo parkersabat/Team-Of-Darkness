@@ -148,3 +148,6 @@
   box-sizing: border-box; /* Include padding and border in width */
 }
 
+.card.removal-requested {
+  border: 2px solid red;
+}
