@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit URL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="container">
+    <h1>Submit a Website URL</h1>
+    <form method="POST" action="{{ url_for('submit_url') }}">
+        <label for="url">Website URL:</label><br>
+        <input type="url" id="url" name="url" placeholder="https://example.com" required><br><br>
+
+        <label for="tags">Tags (comma-separated):</label><br>
+        <input type="text" id="tags" name="tags" placeholder="tag1, tag2, tag3" required><br><br>
+
+        <button type="submit">Submit</button>
+    </form>
+    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+</body>
+</html>

@@ -18,7 +18,10 @@ from flask_login import (
     current_user,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps  # <-- Add this import
 import os
+import re
+
 
 app = Flask(__name__, template_folder=".")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your_secret_key")
@@ -48,6 +51,19 @@ class User(db.Model, UserMixin):
 
     def __repr__(self):
         return f"<User {self.username}>"
+
+
+class SubmittedURL(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    url = db.Column(db.Text, nullable=False)
+    tags = db.Column(db.Text, nullable=False)  # Comma-separated tags
+    submitted_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    user = db.relationship("User", backref=db.backref("submitted_urls", lazy=True))
+
+    def __repr__(self):
+        return f"<SubmittedURL {self.url}>"
 
 
 # User loader for Flask-Login
@@ -144,6 +160,94 @@ def trusted_editors():
     return render_template("trusted_editors.html")  # Create this template
 
 
+@app.route("/browse-urls")
+@login_required
+def browse_urls():
+    """
+    Displays URLs based on user role:
+    - Trusted Editors and above: All URLs
+    - Members: Only URLs with the 'public' tag
+    - Regular users: No access
+    """
+    if current_user.is_trusted_editor or current_user.is_admin or current_user.is_owner:
+        urls = SubmittedURL.query.all()  # Trusted Editors and above can see everything
+    elif current_user.is_member:
+        # Members can only see URLs tagged as 'public'
+        urls = SubmittedURL.query.filter(SubmittedURL.tags.contains("public")).all()
+    else:
+        flash("You do not have access to browse URLs.", "danger")
+        return redirect(url_for("dashboard"))
+
+    return render_template("browse_urls.html", urls=urls)
+
+
+@app.route("/browse-urls/default", methods=["GET"])
+@login_required
+def browse_urls_default():
+    """
+    Returns the default list of URLs based on the user's role:
+    - Trusted Editors and above: All URLs
+    - Members: Only URLs with the 'public' tag
+    """
+    if current_user.is_trusted_editor or current_user.is_admin or current_user.is_owner:
+        urls = SubmittedURL.query.all()  # Trusted Editors and above can see everything
+    elif current_user.is_member:
+        urls = SubmittedURL.query.filter(SubmittedURL.tags.contains("public")).all()
+    else:
+        return jsonify({"error": "You do not have access to this feature."}), 403
+
+    # Format the results as JSON
+    results = [
+        {
+            "id": url.id,
+            "url": url.url,
+            "tags": url.tags.split(","),
+            "submitted_by": User.query.get(url.submitted_by).username,
+            "created_at": url.created_at.isoformat(),
+        }
+        for url in urls
+    ]
+    return jsonify(results)
+
+
+# Decorator for restricting access to Trusted Editors and above
+def trusted_editor_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not (
+            current_user.is_trusted_editor
+            or current_user.is_admin
+            or current_user.is_owner
+        ):
+            flash(
+                "You need to be a Trusted Editor or above to access this page.",
+                "danger",
+            )
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+@app.route("/trusted-editors/submit-url", methods=["GET", "POST"])
+@trusted_editor_required
+def submit_url():
+    if request.method == "POST":
+        url = request.form.get("url")
+        tags = request.form.get("tags")
+
+        if not url or not tags:
+            flash("Both URL and tags are required.", "warning")
+        else:
+            new_url = SubmittedURL(url=url, tags=tags, submitted_by=current_user.id)
+            db.session.add(new_url)
+            db.session.commit()
+            flash("URL submitted successfully!", "success")
+            return redirect(url_for("submit_url"))
+
+    return render_template("submit_url.html")
+
+
 # Promote a regular user to a member (for admins and above)
 @app.route("/admin/promote_user/<int:user_id>", methods=["POST"])
 @login_required
@@ -226,6 +330,129 @@ def demote_user(user_id):
 def manage_users():
     users = User.query.all()
     return render_template("manage_users.html", users=users)
+
+
+from urllib.parse import urlparse
+
+
+def matches_domain(url, pattern):
+    """Check if the URL matches the given domain pattern."""
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+    path = parsed_url.path
+
+    # Convert wildcard pattern to a regex
+    regex_pattern = pattern.replace(".", r"\.").replace("*", ".*")
+    return re.match(regex_pattern, f"{domain}{path}") is not None
+
+
+import re
+
+
+def filter_items(items, query):
+    """Filter items based on the query."""
+    operators = {
+        "AND": lambda tags, query_tags: all(tag in tags for tag in query_tags),
+        "OR": lambda tags, query_tags: any(tag in tags for tag in query_tags),
+        "NOT": lambda tags, query_tags: all(tag not in tags for tag in query_tags),
+    }
+
+    # Parse the query
+    match = re.match(
+        r"\{\{\s*(.*?)\s*\}\}\s*(AND|OR|NOT)?\s*\{\{\s*(.*?)\s*\}\}?|(NOT\s+)?domain:\s*([\S]+)|\{\{\s*(.*?)\s*\}\}",
+        query,
+        re.IGNORECASE,
+    )
+    if not match:
+        return {
+            "error": "Invalid query format. Use '{{ tag }}', '{{ tag }} AND {{ tag }}', 'domain:*', or similar."
+        }
+
+    # Single tag filtering
+    if match.group(6):
+        single_tag = match.group(6).strip()
+        return [
+            item
+            for item in items
+            if single_tag in [tag.strip() for tag in item.tags.split(",")]
+        ]
+
+    # Domain filtering
+    if match.group(4) or match.group(5):
+        is_not = bool(match.group(4))  # Detect if 'NOT' is present
+        domain_pattern = match.group(5)
+        return [
+            item
+            for item in items
+            if (
+                not matches_domain(item.url, domain_pattern)
+                if is_not
+                else matches_domain(item.url, domain_pattern)
+            )
+        ]
+
+    # Tag filtering with operators
+    tag1, operator, tag2 = match.group(1), match.group(2), match.group(3)
+    if not operator or operator not in operators:
+        return {"error": f"Operator '{operator}' not supported."}
+
+    query_tags = [tag1.strip(), tag2.strip()]
+    return [
+        item
+        for item in items
+        if operators[operator](
+            [tag.strip() for tag in item.tags.split(",")], query_tags
+        )
+    ]
+
+
+@app.route("/search", methods=["GET"])
+@login_required
+def search():
+    """
+    Search endpoint for filtering URLs based on a query.
+    Trusted Editors and above get full search access.
+    Members can only see results with the 'public' tag.
+    """
+    query = request.args.get("q")
+    if not query:
+        return jsonify({"error": "Query parameter 'q' is required."}), 400
+
+    # Get all URLs from the database
+    all_items = SubmittedURL.query.all()
+
+    # Apply access restrictions
+    if current_user.is_trusted_editor or current_user.is_admin or current_user.is_owner:
+        # Trusted Editors and above get full access
+        filtered_items = filter_items(all_items, query)
+    elif current_user.is_member:
+        # Members only get results containing the 'public' tag
+        public_items = [
+            item
+            for item in all_items
+            if "public" in [tag.strip() for tag in item.tags.split(",")]
+        ]
+        filtered_items = filter_items(public_items, query)
+    else:
+        # Non-members cannot access the search
+        return jsonify({"error": "You do not have access to this feature."}), 403
+
+    # If filter_items returns an error, pass it through
+    if isinstance(filtered_items, dict) and "error" in filtered_items:
+        return jsonify(filtered_items), 400
+
+    # Format the results as JSON
+    results = [
+        {
+            "id": item.id,
+            "url": item.url,
+            "tags": item.tags.split(","),
+            "submitted_by": User.query.get(item.submitted_by).username,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in filtered_items
+    ]
+    return jsonify(results)
 
 
 # Ensure database tables are created before running the app

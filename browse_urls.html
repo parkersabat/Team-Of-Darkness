@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse URLs</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const searchInput = document.getElementById("searchInput");
+            const urlsContainer = document.querySelector(".Urls");
+    
+            // Function to fetch and render the default URLs
+            async function fetchDefaultUrls() {
+                try {
+                    const response = await fetch(`/browse-urls/default`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch default URLs: ${response.statusText}`);
+                    }
+                    const results = await response.json();
+                    renderUrls(results);
+                } catch (error) {
+                    urlsContainer.innerHTML = `<p>Failed to load default URLs. ${error.message}</p>`;
+                }
+            }
+    
+            // Function to render URLs in the container
+            function renderUrls(urls) {
+                urlsContainer.innerHTML = urls
+                    .map(
+                        (item) => `
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">URL</h5>
+                                    <p>
+                                        <a href="${item.url}" target="_blank">${item.url}</a>
+                                    </p>
+                                    <h6 class="card-subtitle mb-2 text-muted">Tags</h6>
+                                    <p class="card-text">${item.tags.join(", ")}</p>
+                                    <p class="card-text">
+                                        <small class="text-muted">Submitted by: ${item.submitted_by}</small>
+                                    </p>
+                                    <p class="card-text">
+                                        <small class="text-muted">Created at: ${new Date(
+                                            item.created_at
+                                        ).toLocaleString()}</small>
+                                    </p>
+                                </div>
+                            </div>
+                        `
+                    )
+                    .join("");
+            }
+    
+            // Handle search input "Enter" key press
+            searchInput.addEventListener("keydown", async (event) => {
+                if (event.key === "Enter" || event.keyCode === 13) {
+                    const query = searchInput.value.trim();
+                    if (!query) {
+                        await fetchDefaultUrls(); // Show default URLs when search is empty
+                        return;
+                    }
+    
+                    try {
+                        const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                        if (!response.ok) {
+                            throw new Error(`Error: ${response.statusText}`);
+                        }
+                        const results = await response.json();
+    
+                        if (results.error) {
+                            await fetchDefaultUrls(); // Show default URLs on bad request
+                            return;
+                        }
+    
+                        renderUrls(results);
+                    } catch (error) {
+                        await fetchDefaultUrls(); // Show default URLs on error
+                    }
+                }
+            });
+    
+            // Initial load of default URLs
+            fetchDefaultUrls();
+        });
+    </script>    
+</head>
+<body class="container">
+    <h1>Browse Submitted URLs</h1>
+    <div class="form-control">
+        <input id="searchInput" class="input input-alt" placeholder="Search sites" required="" type="text">
+        <span class="input-border input-border-alt"></span>
+    </div>
+    
+    <div class="Urls"></div> <!-- URLs will be dynamically rendered here -->
+</body>
+</html>
