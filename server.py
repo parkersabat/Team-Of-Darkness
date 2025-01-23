@@ -481,9 +481,18 @@ def edit_tags(url_id):
 
     # Split the tags into a list and validate them
     tags_list = [tag.strip() for tag in new_tags.split(",")]
-    if "remove-requested" in tags_list:
-        flash("The tag 'remove-requested' cannot be added manually.", "warning")
-        return redirect(url_for("browse_urls"))
+
+    # Check if the 'remove-requested' tag is being removed
+    if (
+        "remove-requested" not in tags_list
+        and "remove-requested" in url_entry.tags.split(",")
+    ):
+        if not (current_user.is_admin or current_user.is_owner):
+            flash(
+                "Only admins and owners can remove the 'remove-requested' tag.",
+                "warning",
+            )
+            return redirect(url_for("browse_urls"))
 
     # Update the tags and save the changes to the database
     url_entry.tags = ",".join(tags_list)  # Join the tags
