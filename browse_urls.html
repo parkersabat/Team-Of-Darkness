@@ -24,33 +24,55 @@
                 }
             }
     
+
             // Function to render URLs in the container
             function renderUrls(urls) {
                 urlsContainer.innerHTML = urls
                     .map(
-                        (item) => `
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5 class="card-title">URL</h5>
-                                    <p>
+                        (item) => {
+                            const hasRemovalRequestedTag = item.tags.includes("remove-requested");
+
+                            return `
+                                <div class="card ${hasRemovalRequestedTag ? 'removal-requested' : ''}">
+                                    <div class="card-body">
+                                        <h5 class="card-title">URL</h5>
+                                        <p>
                                         <a href="${item.url}" target="_blank">${item.url}</a>
-                                    </p>
-                                    <h6 class="card-subtitle mb-2 text-muted">Tags</h6>
-                                    <p class="card-text">${item.tags.join(", ")}</p>
-                                    <p class="card-text">
+                                        </p>
+                                        <h6 class="card-subtitle mb-2 text-muted">Tags</h6>
+                                        <p class="card-text">${item.tags.join(", ")}</p>
+                                        <p class="card-text">
                                         <small class="text-muted">Submitted by: ${item.submitted_by}</small>
-                                    </p>
-                                    <p class="card-text">
-                                        <small class="text-muted">Created at: ${new Date(
-                                            item.created_at
-                                        ).toLocaleString()}</small>
-                                    </p>
+                                        </p>
+                                        <p class="card-text">
+                                        <small class="text-muted">Created at: ${new Date(item.created_at).toLocaleString()}</small>
+                                        </p>
+                                        {% if current_user.is_trusted_editor %}
+                                            <!-- Change Tags Button -->
+                                            <button 
+                                            class="btn btn-primary change-tags-btn" 
+                                            data-url-id="${item.id}" 
+                                            data-tags="${item.tags.join(', ')}">
+                                            Change Tags
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                    {% if current_user.is_trusted_editor %}
+                                        <!-- Close Button -->
+                                        <div class="close-button-container">
+                                            <button class="close-button" data-url-id="${item.id}">
+                                                <span class="line line1"></span>
+                                                <span class="line line2"></span>
+                                            </button>
+                                        </div>
+                                    {% endif %}
                                 </div>
-                            </div>
-                        `
+                            `;
+                        }
                     )
                     .join("");
             }
+
     
             // Handle search input "Enter" key press
             searchInput.addEventListener("keydown", async (event) => {
@@ -80,10 +102,126 @@
                 }
             });
     
+            // Handle "Change Tags" button clicks
+            document.addEventListener("click", (event) => {
+                const button = event.target.closest(".change-tags-btn");
+                if (button) {
+                    const urlId = button.getAttribute("data-url-id"); // Access the URL ID
+                    const currentTags = button.getAttribute("data-tags"); // Access the tags
+    
+                    console.log(`URL ID: ${urlId}`);
+                    console.log(`Current Tags: ${currentTags}`);
+    
+                    // Example: Display a prompt to update tags (replace with modal logic if needed)
+                    const newTags = prompt(
+                        `Edit tags for URL ID ${urlId} (current tags: ${currentTags}):`,
+                        currentTags
+                    );
+                    if (newTags !== null) {
+                        updateTags(urlId, newTags.split(",").map(tag => tag.trim()));
+                    }
+                }
+    
+                // Handle "Close" button click (ask for confirmation before redirecting)
+                const closeButton = event.target.closest(".close-button");
+                if (closeButton) {
+                    const urlId = closeButton.getAttribute("data-url-id");
+
+                    // Ask for confirmation
+                    const userConfirmed = confirm("Are you sure you want to delete this URL?");
+                    if (userConfirmed) {
+                        // Perform a POST request to delete the URL
+                        deleteUrl(urlId);
+                    }
+                }
+            });
+    
+            // Function to update tags
+            async function updateTags(urlId, tags) {
+                try {
+                    // Prepare URL-encoded form data
+                    const formData = new URLSearchParams({ tags }).toString();
+            
+                    // Make the POST request
+                    const response = await fetch(`/edit-tags/${urlId}`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded",
+                        },
+                        body: formData, // Send the form data
+                    });
+            
+                    // Check if the response is a redirect
+                    if (response.redirected) {
+                        window.location.href = response.url; // Follow the redirect
+                        return;
+                    }
+            
+                    const text = await response.text(); // Get the raw response text
+            
+                    // Try parsing the response as JSON
+                    try {
+                        const result = JSON.parse(text);
+                        if (result.success) {
+                            alert("Tags updated successfully!");
+                            fetchDefaultUrls(); // Refresh the list
+                        } else {
+                            alert(`Failed to update tags: ${result.message || "Unknown error"}`);
+                        }
+                    } catch (err) {
+                        console.error("Non-JSON response:", text);
+                        alert("Unexpected response from server.");
+                    }
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                }
+            }
+
+            async function deleteUrl(urlId) {
+                try {
+                    // Prepare form data for the deletion request (you can pass an empty body if the URL doesn't require it)
+                    const formData = new URLSearchParams().toString();
+            
+                    // Make the POST request to delete the URL
+                    const response = await fetch(`/manage-url/${urlId}`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded",
+                        },
+                        body: formData, // Send the form data
+                    });
+            
+                    // Check if the response is a redirect
+                    if (response.redirected) {
+                        window.location.href = response.url; // Follow the redirect
+                        return;
+                    }
+            
+                    const text = await response.text(); // Get the raw response text
+            
+                    // Try parsing the response as JSON
+                    try {
+                        const result = JSON.parse(text);
+                        if (result.success) {
+                            alert("URL deleted successfully!");
+                            fetchDefaultUrls(); // Refresh the list of URLs
+                        } else {
+                            alert(`Failed to delete URL: ${result.message || "Unknown error"}`);
+                        }
+                    } catch (err) {
+                        console.error("Non-JSON response:", text);
+                        alert("Unexpected response from server.");
+                    }
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                }
+            }
+    
             // Initial load of default URLs
             fetchDefaultUrls();
         });
-    </script>    
+    </script>
+    
 </head>
 <body class="container">
     <h1>Browse Submitted URLs</h1>

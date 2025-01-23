@@ -111,6 +111,7 @@
   text-decoration: none; /* Remove underline from links */
   color: white; /* Ensure text is white */
   transition: transform 0.2s, box-shadow 0.2s; /* Smooth hover effect */
+  position: relative;
 }
 
 .card img {
@@ -150,4 +151,66 @@
 
 .card.removal-requested {
   border: 2px solid red;
+}
+
+.close-button {
+  width: 25px; /* Adjust the size */
+  height: 25px;
+  background-color: red;
+  border-radius: 5px; /* Rounded corners */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute; /* Change position to absolute */
+  top: 20px; /* Distance from the top of the container */
+  left: 20px; /* Distance from the left of the container */
+  cursor: pointer;
+  z-index: 10; /* Ensure it stays above other elements */
+}
+
+.close-button .line {
+  position: absolute;
+  width: 60%; /* Adjust length of the "X" arms */
+  height: 4px; /* Thickness of the lines */
+  background-color: white;
+  border-radius: 2px;
+}
+
+.close-button .line1 {
+  transform: rotate(45deg);
+}
+
+.close-button .line2 {
+  transform: rotate(-45deg);
+}
+
+.check-button {
+  width: 25px; /* Adjust the size */
+  height: 25px;
+  background-color: green; /* Green background for check button */
+  border-radius: 5px; /* Rounded corners */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute; /* Change position to absolute */
+  top: 20px; /* Distance from the top of the container */
+  left: 60px; /* Distance from the left of the container */
+  cursor: pointer;
+  z-index: 10; /* Ensure it stays above other elements */
+}
+
+.check-button .line {
+  position: absolute;
+  width: 60%; /* Adjust length of the check lines */
+  height: 4px; /* Thickness of the lines */
+  background-color: white;
+  border-radius: 2px;
+}
+
+.check-button .line1 {
+  transform: rotate(45deg);
+}
+
+.check-button .line2 {
+  transform: rotate(-45deg);
 }

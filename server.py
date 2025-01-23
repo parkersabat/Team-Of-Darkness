@@ -163,6 +163,7 @@ def trusted_editors():
 @app.route("/browse-urls")
 @login_required
 def browse_urls():
+    users = User.query.all()
     """
     Displays URLs based on user role:
     - Trusted Editors and above: All URLs
@@ -178,7 +179,7 @@ def browse_urls():
         flash("You do not have access to browse URLs.", "danger")
         return redirect(url_for("dashboard"))
 
-    return render_template("browse_urls.html", urls=urls)
+    return render_template("browse_urls.html", urls=urls, users=users)
 
 
 @app.route("/browse-urls/default", methods=["GET"])
@@ -453,6 +454,77 @@ def search():
         for item in filtered_items
     ]
     return jsonify(results)
+
+
+@app.route("/edit-tags/<int:url_id>", methods=["POST"])
+@login_required
+def edit_tags(url_id):
+    """
+    Allows Trusted Editors and above to modify the tags of a submitted URL.
+    """
+    # Only Trusted Editors, Admins, and Owners can edit tags
+    if not (
+        current_user.is_trusted_editor or current_user.is_admin or current_user.is_owner
+    ):
+        flash("You do not have permission to edit tags.", "danger")
+        return redirect(url_for("dashboard"))
+
+    # Get the URL object from the database
+    url_entry = SubmittedURL.query.get_or_404(url_id)
+
+    # Get the new tags from the request form or query parameter
+    new_tags = request.form.get("tags") or request.args.get("t")
+
+    if not new_tags:
+        flash("Tags cannot be empty.", "warning")
+        return redirect(url_for("browse_urls"))
+
+    # Split the tags into a list and validate them
+    tags_list = [tag.strip() for tag in new_tags.split(",")]
+    if "remove-requested" in tags_list:
+        flash("The tag 'remove-requested' cannot be added manually.", "warning")
+        return redirect(url_for("browse_urls"))
+
+    # Update the tags and save the changes to the database
+    url_entry.tags = ",".join(tags_list)  # Join the tags
+    db.session.commit()
+
+    flash("Tags updated successfully!", "success")
+    return redirect(url_for("browse_urls"))  # Return to the browse URLs page
+
+
+@app.route("/manage-url/<int:url_id>", methods=["POST"])
+@login_required
+def manage_url(url_id):
+    """
+    Allows Admins and above to delete a URL.
+    Trusted Editors can add the 'remove-requested' tag.
+    All others are denied access.
+    """
+    # Get the URL object from the database
+    url_entry = SubmittedURL.query.get_or_404(url_id)
+
+    if current_user.is_admin or current_user.is_owner:
+        # Admins and Owners: Delete the URL
+        db.session.delete(url_entry)
+        db.session.commit()
+        flash("URL has been successfully deleted.", "success")
+    elif current_user.is_trusted_editor:
+        # Trusted Editors: Add 'remove-requested' tag
+        tags = [tag.strip() for tag in (url_entry.tags or "").split(",")]
+        if "remove-requested" not in tags:
+            tags.append("remove-requested")
+            url_entry.tags = ",".join(tags)  # Update tags in the database
+            db.session.commit()
+            flash("'Remove-requested' tag has been added to the URL.", "success")
+        else:
+            flash("'Remove-requested' tag is already present.", "info")
+    else:
+        # All others: Deny access
+        flash("You do not have permission to manage this URL.", "danger")
+        return redirect(url_for("dashboard"))
+
+    return redirect(url_for("browse_urls"))
 
 
 # Ensure database tables are created before running the app
